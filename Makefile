@@ -30,7 +30,8 @@ capture:
 	@./scripts/capture_wireshark.sh
 
 parse-latency:
-	@python3 tools/parse_gst_latency.py
+	sed 's/\x1b\[[0-9;]*m//g' gst_latency.log > gst_latency_clean.log
+	python3 analyze_latency.py gst_latency_clean.log
 
 kill:
 	@./scripts/kill_pipelines.sh

@@ -10,21 +10,19 @@ LOG_FILE = os.environ.get("GST_LATENCY_LOG", "gst_latency.log")
 LAT_PATTERNS = [
     re.compile(r"latency=(?P<us>\d+)\s*us"),
     re.compile(r"duration=(?P<ns>\d+)\s*ns"),
-    re.compile(r"time=(?P<ns2>\d+)\s*ns"),
+    # Match both: time=(guint64)12345, time=12345 ns, and time=(guint64)12345,
+    re.compile(r"time=(?:\\(guint64\\))?(?P<ns2>\d+)(?:\\s*ns|,)?"),
 ]
 
-ELEM_PATTERN = re.compile(r"element=(?P<elem>[^ ,]+)")
+ELEM_PATTERN = re.compile(r"(?:element|src-element|sink-element)=\\(string\\)(?P<elem>[^ ,]+)")
 
 def parse_log(path: str):
     stats = defaultdict(list)
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                elem_match = ELEM_PATTERN.search(line)
-                if not elem_match:
-                    continue
-                elem = elem_match.group("elem")
-
+                # [TRACE/DEBUG PRINTS REMOVED FOR NORMAL OPERATION]
+                elem_matches = list(ELEM_PATTERN.finditer(line))
                 val_us = None
                 for pat in LAT_PATTERNS:
                     m = pat.search(line)
@@ -39,12 +37,20 @@ def parse_log(path: str):
                     if "ns2" in m.groupdict():
                         val_us = float(m.group("ns2")) / 1000.0
                         break
-                if val_us is not None:
-                    stats[elem].append(val_us)
+                if val_us is not None and elem_matches:
+                    sink_elem = None
+                    for em in elem_matches:
+                        if 'sink-element' in em.group(0):
+                            sink_elem = em.group('elem')
+                            break
+                    if sink_elem:
+                        stats[sink_elem].append(val_us)
+                    else:
+                        for em in elem_matches:
+                            stats[em.group('elem')].append(val_us)
     except FileNotFoundError:
         print(f"Log file not found: {path}", file=sys.stderr)
         sys.exit(1)
-
     return stats
 
 def summarize(stats):

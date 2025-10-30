@@ -14,9 +14,9 @@ fi
 
 gst-launch-1.0 -v \
   udpsrc port=${PORT} caps="application/x-rtp, media=video, encoding-name=H264, payload=${PAYLOAD_TYPE}" ! \
-  rtpjitterbuffer latency=${JITTERBUFFER_LATENCY_MS} drop-on-late=false ! \
+  rtpjitterbuffer latency=${JITTERBUFFER_LATENCY_MS} ! \
   rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! \
-  timeoverlay halignment=left valignment=bottom text="${TIMEOVERLAY_TEXT} " time-format="%H:%M:%S.%06N" shaded-background=true ! \
+  timeoverlay halignment=left valignment=bottom text="${TIMEOVERLAY_TEXT} " shaded-background=true ! \
   fpsdisplaysink sync=${SINK_SYNC} text-overlay=true
 
 
