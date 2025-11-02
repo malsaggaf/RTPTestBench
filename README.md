@@ -73,23 +73,48 @@ rtp-h264-latency-lab/
 
 ### Stream Pipeline and Latency Calculation
 
-**Pipeline Flow:**
+**Complete Pipeline Flow:**
 ```
 [Video Source] → [Encoder] → [RTP Payload] → [Network/UDP] → [RTP Depayload] → [Decoder] → [Display]
 ```
 
-**End-to-End Latency Definition:**
-Measured latency includes all delays from when a frame leaves the video source through network transmission, reception, decoding, and display. This does **NOT** include camera internal capture/sensor delays (e.g., frame interval of 33ms at 30 FPS).
+**Important: Measurement Scope vs. Complete Pipeline**
 
-**Components Included:**
-- **Encoding delay**: H.264 encoding time (x264 with zerolatency preset)
-- **Network delay**: UDP packet transmission, routing, and arrival
+The diagram above shows the **complete pipeline**, but the **actual latency measurement starts at the receiver** (when packets arrive via UDP). This means:
+
+- **What IS measured** (receiver-side only):
+  - Network transmission delay (UDP packet arrival)
+  - RTP depayload processing
+  - Jitterbuffer delay (`JITTERBUFFER_LATENCY_MS`)
+  - Decoding delay (H.264 decode to raw video)
+  - Display delay (frame rendering and synchronization)
+
+- **What is NOT measured directly** (sender-side):
+  - Encoding delay (H.264 encoding on sender)
+  - RTP payload packetization on sender
+
+**Note:** Camera frame interval (calculated from `FPS`) is automatically added to provide total end-to-end latency, but encoder processing delay is not included.
+
+**Latency Calculation:**
+
+The measured pipeline latency (from network arrival to display) is automatically combined with **camera frame interval latency** to provide total end-to-end latency:
+
+- **Network+Processing latency**: Measured from UDP packet arrival (`udpsrc`) through decode to display (receiver-side only)
+- **Camera frame interval**: Calculated from `FPS` setting in `cfg/.env` as `1000ms / FPS` (e.g., 33.33 ms at 30 FPS)
+- **Total end-to-end latency**: Sum of both above components
+
+**Components Included in Network+Processing Measurement:**
+- **Network delay**: UDP packet transmission, routing, and arrival (measured from `udpsrc`)
 - **Jitterbuffer**: Receiver buffering to absorb network jitter (`JITTERBUFFER_LATENCY_MS`)
-- **Decoding delay**: H.264 decode to raw video
+- **Decoding delay**: H.264 decode to raw video (`avdec_h264`)
 - **Display delay**: Frame rendering and synchronization (`SINK_SYNC`)
 
+**Why Camera Frame Interval is Added:**
+
+The camera frame interval represents the minimum delay between consecutive frames at a given FPS (one frame period). This is added to the measured pipeline latency to estimate true end-to-end latency from camera capture to display. Note that encoder delay is not included (only camera frame interval).
+
 **Measurement Method:**
-GStreamer latency tracer records timestamps when buffers enter the pipeline (source pad) and when they exit at display sinks (sink pad). The difference (`time=(guint64)N nanoseconds`) is converted to microseconds and milliseconds for reporting.
+GStreamer latency tracer records timestamps when buffers enter the receiver pipeline at `udpsrc` (source pad) and when they exit at display sinks (sink pad). The difference (`time=(guint64)N nanoseconds`) is converted to microseconds and milliseconds for reporting. The camera frame interval (from `FPS` in `cfg/.env`) is automatically added to provide total end-to-end latency.
 
 **Output Format:**
 ```
@@ -97,5 +122,9 @@ element                      min(us) avg(us) max(us) samples
 ------------------------------------------------------------
 fpsdisplaysink0                  X      Y      Z     N
 ...
-Approx end-to-end (worst-sink): ~XX.XX ms
+
+Camera frame interval (30 FPS):                        33.33 ms
+Network+Processing latency:                           76.00 ms
+------------------------------------------------------------
+Total end-to-end latency (worst-sink): fpsdisplaysink0 ~109.33 ms
 ```
