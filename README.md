@@ -65,12 +65,37 @@ rtp-h264-latency-lab/
 │  ├─ Dockerfile
 │  └─ entrypoint.sh
 ```
-
 ### Notes
 - Dependencies installed by `make install`.
 - `.env` is optional; defaults are sane. Copy from `cfg/env.example` with `make env`.
 - On some systems `tshark` requires elevated privileges or capabilities to capture.
 - All `*.sh` scripts expect bash and strict mode.
 
+### Stream Pipeline and Latency Calculation
 
+**Pipeline Flow:**
+```
+[Video Source] → [Encoder] → [RTP Payload] → [Network/UDP] → [RTP Depayload] → [Decoder] → [Display]
+```
 
+**End-to-End Latency Definition:**
+Measured latency includes all delays from when a frame leaves the video source through network transmission, reception, decoding, and display. This does **NOT** include camera internal capture/sensor delays (e.g., frame interval of 33ms at 30 FPS).
+
+**Components Included:**
+- **Encoding delay**: H.264 encoding time (x264 with zerolatency preset)
+- **Network delay**: UDP packet transmission, routing, and arrival
+- **Jitterbuffer**: Receiver buffering to absorb network jitter (`JITTERBUFFER_LATENCY_MS`)
+- **Decoding delay**: H.264 decode to raw video
+- **Display delay**: Frame rendering and synchronization (`SINK_SYNC`)
+
+**Measurement Method:**
+GStreamer latency tracer records timestamps when buffers enter the pipeline (source pad) and when they exit at display sinks (sink pad). The difference (`time=(guint64)N nanoseconds`) is converted to microseconds and milliseconds for reporting.
+
+**Output Format:**
+```
+element                      min(us) avg(us) max(us) samples
+------------------------------------------------------------
+fpsdisplaysink0                  X      Y      Z     N
+...
+Approx end-to-end (worst-sink): ~XX.XX ms
+```
